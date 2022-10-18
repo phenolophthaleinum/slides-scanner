@@ -7,125 +7,99 @@ from dash import Dash, dcc, html, Input, Output, no_update, ctx
 import json
 import figureObject
 import dash_bootstrap_components as dbc
-from joblib import Parallel, delayed
+import joblib
 
-
-# TODO: clean up code
+tic = time.perf_counter()
 imgs = list(pathlib.Path("slides_test").rglob("*"))
 imgs = [str(x) for x in imgs]
-# processed_imgs = []
+missed_imgs = []
+processed_imgs = []
 output_dir = "slides_processed_test"
 print(imgs)
 print(f"{len(imgs)} images will be processed")
 current_image = []
 current_dims = {}
-# processed_obj = []
+processed_obj = []
 missed_obj = []
 current_index = 0
 rotate_flag = False
 
 
-def image_processing(image):
-    """
-    Parallel processing of input images
-    Args:
-        image (str): String path to image
+def image_processing():
+    global current_image
+    global current_dims
+    for image in imgs:
+        im_name = image.split("\\")[-1]
+        im = cv2.imread(image, -1)
+        im_gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+        ret, thres = cv2.threshold(im_gray, 175, 255, cv2.THRESH_BINARY)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))
+        opening = cv2.morphologyEx(thres, cv2.MORPH_OPEN, kernel, iterations=3)
+        cnts = cv2.findContours(opening, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cnts = cnts[0] if len(cnts) == 2 else cnts[1]
 
-    Returns: [str, Figure, list[str]]: `str` is a image name; `Figure` is an object that contains information about
-    edited photo; `list` contains names of missed images.
-    """
+        image_number = 0
 
-    missed_imgs = []
-    im_name = image.split("\\")[-1]
-    im = cv2.imread(image, -1)
-    im_gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-    ret, thres = cv2.threshold(im_gray, 175, 255, cv2.THRESH_BINARY)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))
-    opening = cv2.morphologyEx(thres, cv2.MORPH_OPEN, kernel, iterations=3)
-    cnts = cv2.findContours(opening, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+        for c in cnts:
+            x, y, w, h = cv2.boundingRect(c)
+            # cv2.rectangle(im, (x, y), (x + w, y + h), (36, 255, 12), 3)
+            ROI = im[y:y + h, x:x + w]
+            print(ROI.shape)
+            print(f"x: {x}, y: {y}, w: {w}, h: {h}")
+            if ROI.shape[0] * ROI.shape[1] >= 1_500_000:
+                # input_points = np.float32([[x, y], [x + w, y], [x, y + h], [x + w, y + h]])
+                # output_points = np.float32([[0, 0], [w - 1, 0], [0, h - 1], [w - 1, y - 1]])
+                # matrix = cv2.getPerspectiveTransform(input_points, output_points)
+                # imgOutput = cv2.warpPerspective(ROI, matrix, (w, h),
+                #                                 borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
+                # cv2.imwrite(f"{output_dir}/{im_name}_ROI_{image_number}.png", cv2.rotate(imgOutput, cv2.ROTATE_90_CLOCKWISE))
+                current_image = im
+                current_dims = {
+                    "x0": x,
+                    "x1": x + w,
+                    "y0": y,
+                    "y1": y + h
+                }
+                new_fig = figureObject.Figure(im_name, current_image, current_dims)
+                # cv2.imwrite(f"{output_dir}/{im_name}_ROI_{image_number}.png", cv2.rotate(ROI, cv2.ROTATE_90_CLOCKWISE))
+                image_number += 1
+                processed_imgs.append(im_name)
+                processed_obj.append(new_fig)
+            else:
+                missed_imgs.append(im_name)
+                # current_dims = {
+                #     "x0": 0,
+                #     "x1": 0 + w,
+                #     "y0": 0,
+                #     "y1": 0 + h
+                # }
+                # missed_fig = slides_classes.Figure(im_name, im, current_dims)
+                # missed_obj.append(missed_fig)
+                continue
 
-    image_number = 0
+        # processed_obj.extend(missed_obj)
+    unprocessed_imgs_names = set(missed_imgs) - set(processed_imgs)
+    for img_name in unprocessed_imgs_names:
+        i = cv2.imread(f"slides_test/{img_name}", -1)
+        h = i.shape[0]
+        w = i.shape[1]
+        current_dims = {
+            "x0": 0,
+            "x1": 0 + w,
+            "y0": 0,
+            "y1": 0 + h
+        }
+        missed_obj.append(figureObject.Figure(img_name, i, current_dims))
+    processed_obj.extend(missed_obj)
 
-    for c in cnts:
-        x, y, w, h = cv2.boundingRect(c)
-        # cv2.rectangle(im, (x, y), (x + w, y + h), (36, 255, 12), 3)
-        ROI = im[y:y + h, x:x + w]
-        print(ROI.shape)
-        print(f"x: {x}, y: {y}, w: {w}, h: {h}")
-        if ROI.shape[0] * ROI.shape[1] >= 1_500_000:
-            # input_points = np.float32([[x, y], [x + w, y], [x, y + h], [x + w, y + h]])
-            # output_points = np.float32([[0, 0], [w - 1, 0], [0, h - 1], [w - 1, y - 1]])
-            # matrix = cv2.getPerspectiveTransform(input_points, output_points)
-            # imgOutput = cv2.warpPerspective(ROI, matrix, (w, h),
-            #                                 borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
-            # cv2.imwrite(f"{output_dir}/{im_name}_ROI_{image_number}.png", cv2.rotate(imgOutput, cv2.ROTATE_90_CLOCKWISE))
-            current_image = im
-            current_dims = {
-                "x0": x,
-                "x1": x + w,
-                "y0": y,
-                "y1": y + h
-            }
-            new_fig = figureObject.Figure(im_name, current_image, current_dims)
-            # cv2.imwrite(f"{output_dir}/{im_name}_ROI_{image_number}.png", cv2.rotate(ROI, cv2.ROTATE_90_CLOCKWISE))
-            image_number += 1
-            # processed_imgs.append(im_name)
-            # processed_obj.append(new_fig)
-            # print(im_name, new_fig, None)
-            return im_name, new_fig, None
-        else:
-            missed_imgs.append(im_name)
-            # current_dims = {
-            #     "x0": 0,
-            #     "x1": 0 + w,
-            #     "y0": 0,
-            #     "y1": 0 + h
-            # }
-            # missed_fig = slides_classes.Figure(im_name, im, current_dims)
-            # missed_obj.append(missed_fig)
-            continue
-    # print(None, None, set(missed_imgs))
-    return None, None, next(iter(set(missed_imgs)))
-
-    # processed_obj.extend(missed_obj)
-
-
-# missed = []
-tic = time.perf_counter()
-# processed_imgs, processed_obj, missed = Parallel(n_jobs=-1, backend='loky')(delayed(image_processing)(image) for image in imgs)
-# print(processed_imgs)
-# print(processed_obj)
-# print(missed)
-r = Parallel(n_jobs=-1, backend='loky')(delayed(image_processing)(image) for image in imgs)
-# print(r[0])
-processed_imgs, processed_obj, missed = zip(*r)
-processed_imgs = [x for x in processed_imgs if x is not None]
-processed_obj = [x for x in processed_obj if x is not None]
-missed = [x for x in missed if x is not None]
-
-# unprocessed_imgs_names = set(missed) - set(processed_imgs)
-for img_name in missed:
-    i = cv2.imread(f"slides_test/{img_name}", -1)
-    h = i.shape[0]
-    w = i.shape[1]
-    current_dims = {
-        "x0": 0,
-        "x1": 0 + w,
-        "y0": 0,
-        "y1": 0 + h
-    }
-    missed_obj.append(figureObject.Figure(img_name, i, current_dims))
-processed_obj.extend(missed_obj)
-
-print(f"Missed images: \n{set(missed) - set(processed_imgs) if set() else None}")
-toc = time.perf_counter()
-elapsed_time = toc - tic
-print(f"elapsed time: {elapsed_time:0.8f} seconds")
-# print(processed_obj)
+    print(f"Missed images: \n{set(missed_imgs) - set(processed_imgs) if set() else None}")
+    toc = time.perf_counter()
+    elapsed_time = toc - tic
+    print(f"elapsed time: {elapsed_time:0.8f} seconds")
+    # print(processed_obj)
 
 
-# image_processing()
+image_processing()
 fig = px.imshow(processed_obj[0].img)
 fig.add_shape(editable=True,
               x0=processed_obj[0].dims["x0"],
