@@ -7,25 +7,35 @@ from dash import Dash, dcc, html, Input, Output, no_update, ctx
 import json
 import figureObject
 import dash_bootstrap_components as dbc
-import joblib
+from joblib import Parallel, delayed
 
-tic = time.perf_counter()
-imgs = list(pathlib.Path("slides").rglob("*"))
+
+# TODO: clean up code
+imgs = list(pathlib.Path("slides_test").rglob("*"))
 imgs = [str(x) for x in imgs]
-missed_imgs = []
-processed_imgs = []
-output_dir = "slides_processed"
+# processed_imgs = []
+output_dir = "slides_processed_test"
 print(imgs)
 print(f"{len(imgs)} images will be processed")
 current_image = []
 current_dims = {}
-processed_obj = []
+# processed_obj = []
 missed_obj = []
 current_index = 0
 rotate_flag = False
 
 
 def image_processing(image):
+    """
+    Parallel processing of input images
+    Args:
+        image (str): String path to image
+
+    Returns: [str, Figure, list[str]]: `str` is a image name; `Figure` is an object that contains information about
+    edited photo; `list` contains names of missed images.
+    """
+
+    missed_imgs = []
     im_name = image.split("\\")[-1]
     im = cv2.imread(image, -1)
     im_gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
@@ -60,8 +70,10 @@ def image_processing(image):
             new_fig = figureObject.Figure(im_name, current_image, current_dims)
             # cv2.imwrite(f"{output_dir}/{im_name}_ROI_{image_number}.png", cv2.rotate(ROI, cv2.ROTATE_90_CLOCKWISE))
             image_number += 1
-            processed_imgs.append(im_name)
-            processed_obj.append(new_fig)
+            # processed_imgs.append(im_name)
+            # processed_obj.append(new_fig)
+            # print(im_name, new_fig, None)
+            return im_name, new_fig, None
         else:
             missed_imgs.append(im_name)
             # current_dims = {
@@ -73,30 +85,47 @@ def image_processing(image):
             # missed_fig = slides_classes.Figure(im_name, im, current_dims)
             # missed_obj.append(missed_fig)
             continue
+    # print(None, None, set(missed_imgs))
+    return None, None, next(iter(set(missed_imgs)))
 
-        # processed_obj.extend(missed_obj)
-    unprocessed_imgs_names = set(missed_imgs) - set(processed_imgs)
-    for img_name in unprocessed_imgs_names:
-        i = cv2.imread(f"slides/{img_name}", -1)
-        h = i.shape[0]
-        w = i.shape[1]
-        current_dims = {
-            "x0": 0,
-            "x1": 0 + w,
-            "y0": 0,
-            "y1": 0 + h
-        }
-        missed_obj.append(figureObject.Figure(img_name, i, current_dims))
-    processed_obj.extend(missed_obj)
-
-    print(f"Missed images: \n{set(missed_imgs) - set(processed_imgs) if set() else None}")
-    toc = time.perf_counter()
-    elapsed_time = toc - tic
-    print(f"elapsed time: {elapsed_time:0.8f} seconds")
-    # print(processed_obj)
+    # processed_obj.extend(missed_obj)
 
 
-image_processing()
+# missed = []
+tic = time.perf_counter()
+# processed_imgs, processed_obj, missed = Parallel(n_jobs=-1, backend='loky')(delayed(image_processing)(image) for image in imgs)
+# print(processed_imgs)
+# print(processed_obj)
+# print(missed)
+r = Parallel(n_jobs=-1, backend='loky')(delayed(image_processing)(image) for image in imgs)
+# print(r[0])
+processed_imgs, processed_obj, missed = zip(*r)
+processed_imgs = [x for x in processed_imgs if x is not None]
+processed_obj = [x for x in processed_obj if x is not None]
+missed = [x for x in missed if x is not None]
+
+# unprocessed_imgs_names = set(missed) - set(processed_imgs)
+for img_name in missed:
+    i = cv2.imread(f"slides_test/{img_name}", -1)
+    h = i.shape[0]
+    w = i.shape[1]
+    current_dims = {
+        "x0": 0,
+        "x1": 0 + w,
+        "y0": 0,
+        "y1": 0 + h
+    }
+    missed_obj.append(figureObject.Figure(img_name, i, current_dims))
+processed_obj.extend(missed_obj)
+
+print(f"Missed images: \n{set(missed) - set(processed_imgs) if set() else None}")
+toc = time.perf_counter()
+elapsed_time = toc - tic
+print(f"elapsed time: {elapsed_time:0.8f} seconds")
+# print(processed_obj)
+
+
+# image_processing()
 fig = px.imshow(processed_obj[0].img)
 fig.add_shape(editable=True,
               x0=processed_obj[0].dims["x0"],

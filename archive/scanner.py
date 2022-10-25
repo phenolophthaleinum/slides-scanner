@@ -10,11 +10,11 @@ import dash_bootstrap_components as dbc
 import joblib
 
 tic = time.perf_counter()
-imgs = list(pathlib.Path("slides").rglob("*"))
+imgs = list(pathlib.Path("slides_test").rglob("*"))
 imgs = [str(x) for x in imgs]
 missed_imgs = []
 processed_imgs = []
-output_dir = "slides_processed"
+output_dir = "slides_processed_test"
 print(imgs)
 print(f"{len(imgs)} images will be processed")
 current_image = []
@@ -26,6 +26,8 @@ rotate_flag = False
 
 
 def image_processing():
+    global current_image
+    global current_dims
     for image in imgs:
         im_name = image.split("\\")[-1]
         im = cv2.imread(image, -1)
@@ -78,7 +80,7 @@ def image_processing():
         # processed_obj.extend(missed_obj)
     unprocessed_imgs_names = set(missed_imgs) - set(processed_imgs)
     for img_name in unprocessed_imgs_names:
-        i = cv2.imread(f"slides/{img_name}", -1)
+        i = cv2.imread(f"slides_test/{img_name}", -1)
         h = i.shape[0]
         w = i.shape[1]
         current_dims = {
