@@ -45,6 +45,9 @@ def image_processing(image):
     cnts = cv2.findContours(opening, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnts = cnts[0] if len(cnts) == 2 else cnts[1]
 
+    if not cnts:
+        return None, None, im_name
+
     image_number = 0
 
     for c in cnts:
